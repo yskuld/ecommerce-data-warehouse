@@ -11,7 +11,7 @@
 
 
 ## 数据源说明
-- Olist 数据集为 2016–2018 年巴西电商的静态历史快照，共 9 张 CSV 表，涵盖订单、商品、支付、评价、顾客、商家、地理位置等核心业务数据。
+- 本项目使用 Olist 公开发布的 [Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)（Kaggle 数据集），共 9 张 CSV 表，涵盖 2016-2018 年的订单、商品、支付、评价、顾客、商家、地理位置等核心业务数据。
 - 数据量级在约 10 万条订单、3 万条商品、4 万条支付记录。
 - 数据集仅包含业务结果数据（交易、支付、评价），不包含用户行为日志和营销活动数据，因此当前模型聚焦交易域分析。
 - 原表 `product_category_name_translation`（品类翻译表）无列名，已在 ODS 层手动定义列名后加载。

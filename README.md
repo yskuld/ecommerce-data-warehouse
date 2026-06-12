@@ -23,7 +23,7 @@
 |:---|:---|:---|
 | **ODS** | 贴源层，完整保留原始数据，不做业务逻辑改动 | `ods_olist_trd_orders_df` 等 9 张表 |
 | **DIM / DWD** | **DIM**：维度层，描述业务实体（商品、顾客、商家、日期），提供一致的维度属性。<br>**DWD**：明细事实层，基于星型模型构建，记录最原子的业务过程。DIM 与 DWD 在同一逻辑层内协同，共同构成星型模型的基础。 | `dim_olist_itm_product_1d`、`dim_date` 等 4 张维表；`dwd_olist_trd_ord_di`（累积快照）、`dwd_olist_trd_pay_di`（事务）、`dwd_olist_trd_rev_di`（事务）3 张事实表 |
-| **DWS** | 汇总层，按维度实体轻度汇总，为 BI 看板和日报提供预聚合数据 | `dws_olist_trd_ord_by_date_1d`（日汇总）、`dws_olist_trd_ord_by_cate_1d`（品类汇总）已建，另有4张表建设中 |
+| **DWS** | 汇总层，按维度实体轻度汇总，为 BI 看板和日报提供预聚合数据 | `dws_olist_trd_ord_by_date_1d`（日汇总）、`dws_olist_trd_ord_by_cate_1d`（品类汇总）、`dws_olist_trd_pay_by_date_1d`（支付日汇总）、`dws_olist_trd_rev_by_date_1d`（评价日汇总）已建，另有2张表建设中 |
 | **ADS** | 应用层，面向业务角色组装宽表（待建设） | 规划中，对应运营、物流、支付、客服等角色看板 |
 
 
@@ -74,11 +74,11 @@
 |:---|:---|:---|
 | `dws_olist_trd_ord_by_date_1d` | 时间（日） | 运营总监、物流经理每日看板 |
 | `dws_olist_trd_ord_by_cate_1d` | 商品品类 | 品类运营与招商决策 |
+| `dws_olist_trd_pay_by_date_1d` | 时间（日） | 支付健康度监控 |
+| `dws_olist_trd_rev_by_date_1d` | 时间（日） | 用户满意度监控 |
 ### DWS 层待建设
 - `dws_olist_trd_ord_by_cus_1d`：顾客地域汇总，支持用户画像与区域运营。
 - `dws_olist_trd_ord_by_sel_1d`：商家地域汇总，支持商家运营与物流优化。
-- `dws_olist_trd_pay_by_date_1d`：支付日汇总，支持支付健康度监控。
-- `dws_olist_trd_rev_by_date_1d`：评价日汇总，支持服务质量分析。
 
 
 ## 文件结构
@@ -108,6 +108,6 @@ ecommerce-data-warehouse/
 
 
 ## 后续规划
-- 完成顾客地域、商家地域、支付、评价的 DWS 汇总表。
+- 完成顾客地域、商家地域的 DWS 汇总表。
 - 建设 ADS 层，面向业务角色组装宽表，实现 DWS 原子汇总到业务看板的完整链路。
 - 编写独立的质量检查脚本，每日自动运行，把控数据质量。

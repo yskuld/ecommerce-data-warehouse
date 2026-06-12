@@ -122,14 +122,12 @@ WHERE o.order_status NOT IN ('unavailable', 'canceled')
 -- 联合主键：order_id + payment_sequential
 -- 来源：ods_olist_trd_order_payments_df + ods_olist_trd_orders_df
 -- 数据质量与特殊处理：
---   1. payment_installments 存在约 2 条取值为 0 的记录，且支付方式并非
-全部为 not_defined，初步排查为早期数据不规范或银行交易信息回传
-缺失导致
+--   1. payment_installments 存在约 2 条取值为 0 的记录，且支付方式并非全部为 not_defined，初步排查为早期数据不规范或银行交易信息回传缺失导致
 --   2. 在 DWD 层 ETL 中通过 CASE WHEN payment_installments = 0 THEN 1
  END 将 0 统一修正为 1（一次性付清），保证统计一致性
 --   3. is_installment 基于清洗后的分期数判断（>1 为分期），不受异常值影响
---   4. payment_sequential 用于追踪同订单内多次支付尝试，通过 MAX() OVER()
-派生 payment_attempts 衡量支付摩擦
+--   4. payment_sequential 为支付流水序号（同一订单可能有多笔资金记录，如 voucher 逐张核销），通过 MAX() OVER() 派生 payment_attempts，
+--      反映该订单的支付流水总笔数
 --   5. payment_value 过滤 NULL 与负数，保证金额可统计
 -- ==========================================
 
@@ -142,7 +140,7 @@ CREATE TABLE IF NOT EXISTS dwd_olist_trd_pay_di (
     payment_type STRING COMMENT '支付方式',
     payment_installments INT COMMENT '分期期数',
     payment_value DECIMAL(10,2) COMMENT '支付金额',
-    payment_attempts INT COMMENT '支付尝试次数',
+    payment_attempts INT COMMENT '支付流水笔数',
     is_installment INT COMMENT '是否分期（1=分期，0=未分期）'
 )
 COMMENT '订单支付事实表，粒度：一笔支付流水'

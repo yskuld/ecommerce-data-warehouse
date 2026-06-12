@@ -289,3 +289,150 @@ FROM cate_direct d
 LEFT JOIN cate_avg_duration du ON d.cate_name = du.cate_name
 LEFT JOIN cate_avg_overtime o  ON d.cate_name = o.cate_name
 ;
+
+-- ==========================================
+-- DWS层：订单支付日汇总表
+-- 表名：dws_olist_trd_pay_by_date_1d
+-- 粒度：每天一行
+-- 来源：dwd_olist_trd_pay_di
+-- 说明：支付金额、支付笔数、分期占比、平均期数可直接基于支付流水行聚合；
+--       支付流水笔数（payment_attempts）为订单级度量，需先按订单去重再平均。
+-- ==========================================
+
+-- 1. 建表
+CREATE TABLE IF NOT EXISTS dws_olist_trd_pay_by_date_1d (
+    date_id                 STRING        COMMENT '日期',
+    daily_payment_value     DECIMAL(10,2) COMMENT '日支付总金额',
+    daily_payment_count     INT           COMMENT '日支付流水笔数',
+    installment_rate        DECIMAL(10,4) COMMENT '分期占比（按笔数）',
+    installment_gmv_rate    DECIMAL(10,4) COMMENT '分期GMV占比（按金额）',
+    avg_installments        DECIMAL(10,2) COMMENT '分期用户平均期数',
+    avg_payment_attempts    DECIMAL(10,2) COMMENT '平均每订单支付流水笔数'
+)
+COMMENT '订单支付日汇总表'
+PARTITIONED BY (dt STRING COMMENT '数据日期')
+STORED AS ORC
+TBLPROPERTIES ('orc.compress'='SNAPPY');
+
+-- 2. 加载数据
+INSERT OVERWRITE TABLE dws_olist_trd_pay_by_date_1d
+PARTITION (dt = '${dt}')
+WITH
+-- 基础数据集：支付流水
+base AS (
+    SELECT
+        p.date_id,
+        p.order_id,
+        p.payment_value,
+        p.is_installment,
+        p.payment_installments,
+        p.payment_attempts
+    FROM dwd_olist_trd_pay_di p
+    JOIN dwd_olist_trd_ord_di o ON p.order_id = o.order_id
+    -- 全量初始化：使用订单的下单时间戳范围过滤，覆盖全部历史数据
+    WHERE o.order_purchase_timestamp >= '${start_time}'
+      AND o.order_purchase_timestamp < '${end_time}'
+    -- 每日加载时替换为：
+    -- WHERE p.dt = '${dt}'
+),
+
+-- 直接聚合的指标（支付金额、笔数、分期占比、平均期数）
+pay_direct AS (
+    SELECT
+        date_id,
+        SUM(payment_value) AS daily_payment_value,
+        COUNT(*) AS daily_payment_count,
+        SUM(is_installment) / COUNT(*) AS installment_rate,
+        SUM(CASE WHEN is_installment = 1 THEN payment_value ELSE 0 END) / SUM(payment_value) AS installment_gmv_rate,
+        AVG(CASE WHEN is_installment = 1 THEN payment_installments END) AS avg_installments
+    FROM base
+    GROUP BY date_id
+),
+
+-- 订单级去重：用于支付流水笔数
+order_attempts AS (
+    SELECT
+        date_id,
+        order_id,
+        MAX(payment_attempts) AS order_payment_attempts
+    FROM base
+    GROUP BY date_id, order_id
+),
+avg_attempts AS (
+    SELECT
+        date_id,
+        AVG(order_payment_attempts) AS avg_payment_attempts
+    FROM order_attempts
+    GROUP BY date_id
+)
+
+-- 最终合并
+SELECT
+    d.date_id,
+    d.daily_payment_value,
+    d.daily_payment_count,
+    d.installment_rate,
+    d.installment_gmv_rate,
+    d.avg_installments,
+    a.avg_payment_attempts
+FROM pay_direct d
+LEFT JOIN avg_attempts a ON d.date_id = a.date_id
+;
+
+-- ==========================================
+-- DWS层：订单评价日汇总表
+-- 表名：dws_olist_trd_rev_by_date_1d
+-- 粒度：每天一行
+-- 来源：dwd_olist_trd_rev_di
+-- 说明：评价事实表粒度为一条评价记录，所有指标可直接基于评价行聚合，无需去重。
+-- ==========================================
+
+-- 1. 建表
+CREATE TABLE IF NOT EXISTS dws_olist_trd_rev_by_date_1d (
+    date_id             STRING        COMMENT '日期',
+    daily_review_count  INT           COMMENT '日评价数',
+    avg_review_score    DECIMAL(10,2) COMMENT '平均评分',
+    good_review_rate    DECIMAL(10,4) COMMENT '好评率',
+    reply_rate          DECIMAL(10,4) COMMENT '回复率',
+    avg_hours_to_reply  DECIMAL(10,2) COMMENT '平均回复时长（小时）',
+    has_comment_rate    DECIMAL(10,4) COMMENT '有内容评价占比'
+)
+COMMENT '订单评价日汇总表'
+PARTITIONED BY (dt STRING COMMENT '数据日期')
+STORED AS ORC
+TBLPROPERTIES ('orc.compress'='SNAPPY');
+
+-- 2. 加载数据
+INSERT OVERWRITE TABLE dws_olist_trd_rev_by_date_1d
+PARTITION (dt = '${dt}')
+WITH
+-- 基础数据集：评价记录 + 关联订单表获取下单时间戳（用于全量初始化时间范围过滤）
+base AS (
+    SELECT
+        r.date_id,
+        r.review_score,
+        r.is_good_review,
+        r.is_reply,
+        r.hours_to_reply,
+        r.has_comment
+    FROM dwd_olist_trd_rev_di r
+    JOIN dwd_olist_trd_ord_di o ON r.order_id = o.order_id
+    -- 全量初始化：使用订单的下单时间戳范围过滤
+    WHERE o.order_purchase_timestamp >= '${start_time}'
+      AND o.order_purchase_timestamp < '${end_time}'
+    -- 每日加载时替换为：
+    -- WHERE r.dt = '${dt}'
+)
+
+-- 聚合
+SELECT
+    date_id,
+    COUNT(1) AS daily_review_count,
+    AVG(review_score) AS avg_review_score,
+    SUM(is_good_review) / COUNT(1) AS good_review_rate,
+    SUM(is_reply) / COUNT(1) AS reply_rate,
+    AVG(hours_to_reply) AS avg_hours_to_reply,
+    SUM(has_comment) / COUNT(1) AS has_comment_rate
+FROM base
+GROUP BY date_id
+;
